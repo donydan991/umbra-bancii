@@ -14,8 +14,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install deps
-        run: |
-          pip install -r requirements.txt
+       run: pip install -r requirements.txt
       - name: Run pipeline (demo)
         run: |
           python src/pipeline_demo.py
