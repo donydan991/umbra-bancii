@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: ["ingest_fx.py", "ingest_calendar.py"]
+        module: ["ingest_fx.py", "ingest_calendar.py", "ingest_news.py"]
 
     steps:
       - name: Checkout repository
