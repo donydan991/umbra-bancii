@@ -1,36 +1,49 @@
 name: Deploy dashboard
 
+# ▶ Rulează automat DUPĂ ce workflow‑ul principal “Umbra Bancii – cron 15m” a terminat cu SUCCESS
 on:
   workflow_run:
     workflows: ["Umbra Bancii – cron 15m"]
-    types:
-      - completed
+    types: [completed]
 
 jobs:
   build:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+
     steps:
+      # 1) Checkout codul repo‑ului
       - uses: actions/checkout@v4
 
+      # 2) Descarcă artefactul Pattern Fusion produs în run‑ul anterior
       - name: Download fusion artifact
         uses: actions/download-artifact@v4
         with:
           name: reports-pattern_fusion
-          path: site/
+          path: site            # îl punem într‑un folder nou
 
-      - name: Generate simple index.html
+      # 3) Construieşte o pagină HTML super‑simplă
+      - name: Build index.html
         run: |
           cd site
           latest=$(ls -1 PATTERN_FUSION_*.yaml | tail -1)
-          echo "<h2>Umbra Băncii – verdict live</h2>"  > index.html
-          echo "<p>Fisier: $latest</p>"                >> index.html
-          echo "<pre>"                                  >> index.html
-          cat $latest                                   >> index.html
-          echo "</pre>"                                 >> index.html
 
-      - name: Deploy to Pages
+          echo "<!doctype html><html><head><meta charset='utf-8'><title>Umbra Bancii – Dashboard</title>" > index.html
+          echo "<style>body{font-family:Arial;margin:40px;}pre{background:#f4f4f4;padding:15px;}h1{color:#2060ff}</style>" >> index.html
+          echo "</head><body>" >> index.html
+          echo "<h1>Umbra Băncii – Verdict live</h1>" >> index.html
+          echo "<p><strong>Fișier:</strong> $latest</p>" >> index.html
+          echo "<pre>" >> index.html
+          cat $latest >> index.html
+          echo "</pre>" >> index.html
+          echo "<p>Last update: $(date -u '+%Y-%m-%d %H:%M UTC')</p>" >> index.html
+          echo "</body></html>" >> index.html
+
+      # 4) Publică folderul “site/” pe branch‑ul gh-pages
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
-          publish_dir: site
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          publish_branch: gh-pages
+          force_orphan: true        # păstrează branchul Pages curat
