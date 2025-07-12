@@ -1,0 +1,36 @@
+name: Deploy dashboard
+
+on:
+  workflow_run:
+    workflows: ["Umbra Bancii – cron 15m"]
+    types:
+      - completed
+
+jobs:
+  build:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download fusion artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: reports-pattern_fusion
+          path: site/
+
+      - name: Generate simple index.html
+        run: |
+          cd site
+          latest=$(ls -1 PATTERN_FUSION_*.yaml | tail -1)
+          echo "<h2>Umbra Băncii – verdict live</h2>"  > index.html
+          echo "<p>Fisier: $latest</p>"                >> index.html
+          echo "<pre>"                                  >> index.html
+          cat $latest                                   >> index.html
+          echo "</pre>"                                 >> index.html
+
+      - name: Deploy to Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_dir: site
+          github_token: ${{ secrets.GITHUB_TOKEN }}
