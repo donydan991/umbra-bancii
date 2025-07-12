@@ -6,6 +6,8 @@ on:
     workflows: ["Umbra Bancii – cron 15m"]
     types: [completed]
 
+  workflow_dispatch:   # ← adăugat: îţi dă buton “Run workflow”
+
 jobs:
   build:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
