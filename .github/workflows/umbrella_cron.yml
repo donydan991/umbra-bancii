@@ -16,6 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Clean old output
+        run: |
+          rm -rf output/*
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
