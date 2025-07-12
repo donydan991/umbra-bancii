@@ -3,3 +3,4 @@ yfinance
 pyyaml
 requests
 lxml
+python-dateutil
