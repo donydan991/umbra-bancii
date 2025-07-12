@@ -1,64 +1,51 @@
 name: Deploy dashboard
 
-# ────────────────────────────────
-# Trigger‑uri
-#   • automat: după fiecare rulare reușită a pipeline‑ului principal
-#   • manual: din UI (buton Run workflow)
-# ────────────────────────────────
 on:
   workflow_run:
     workflows: ["Umbra Bancii – cron 15m"]
     types: [completed]
+  workflow_dispatch:
 
-  workflow_dispatch:          # dă butonul “Run workflow” în tab‑ul Actions
-
-# token implicit trebuie să aibă drept de push pe gh-pages
 permissions:
   contents: write
 
 jobs:
   build:
-    # rulează dacă:
-    #  • e declanșat manual SAU
-    #  • vine de la workflow_run & concluzia a fost Success
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-
     runs-on: ubuntu-latest
 
     steps:
-      # 1) checkout repo (ne trebuie fișierul yaml ca să știm numele artefactului)
       - uses: actions/checkout@v4
 
-      # 2) descarcă artefactul Pattern Fusion generat de pipeline
-      - name: Download fusion artifact
-        uses: actions/download-artifact@v4
+      # ⚠️  Descărcăm artefactul din CEL MAI RECENT run SUCCES al workflow‑ului principal
+      - name: Download fusion artifact from main workflow
+        uses: dawidd6/action-download-artifact@v2
         with:
-          name: reports-pattern_fusion
-          path: site         # salvăm în folderul ce va fi publicat
+          workflow: umbrella_cron.yml                  # fișierul principal
+          name: reports-pattern_fusion                 # numele artefactului
+          branch: main
+          workflow_conclusion: success
+          path: site                                   # îl salvăm în folderul site/
 
-      # 3) construiește un index.html foarte simplu
+      # construim pagina HTML
       - name: Build index.html
         run: |
           cd site
           latest=$(ls -1 PATTERN_FUSION_*.yaml | tail -1)
           {
-            echo "<!doctype html><html><head><meta charset='utf-8'><title>Umbra Bancii – Dashboard</title>"
-            echo "<style>body{font-family:Arial,Helvetica,sans-serif;margin:40px;}pre{background:#f7f7f7;padding:15px;border:1px solid #ddd;}h1{color:#2050ff}</style>"
-            echo "</head><body>"
+            echo '<!doctype html><html><head><meta charset="utf-8"><title>Umbra Bancii – Dashboard</title>'
+            echo '<style>body{font-family:Arial,Helvetica,sans-serif;margin:40px;}pre{background:#f7f7f7;border:1px solid #ddd;padding:15px;}h1{color:#2050ff}</style></head><body>'
             echo "<h1>Umbra Băncii – Verdict live</h1>"
-            echo "<p><strong>Fișier:</strong> $latest</p>"
-            echo "<pre>"
+            echo "<p><strong>Fișier:</strong> $latest</p><pre>"
             cat "$latest"
-            echo "</pre>"
-            echo "<p>Last update: $(date -u '+%Y-%m-%d %H:%M UTC')</p>"
-            echo "</body></html>"
+            echo "</pre><p>Last update: $(date -u '+%Y-%m-%d %H:%M UTC')</p></body></html>"
           } > index.html
 
-      # 4) publică directorul site/ pe branch‑ul gh-pages
+      # publicăm pe gh-pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: site
-          force_orphan: true        # menține branch‑ul curat – o singură istorie
+          force_orphan: true
