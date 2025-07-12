@@ -1,6 +1,4 @@
 import yaml, datetime, os, hashlib
-
-# creează folderul de output dacă nu există
 os.makedirs("output", exist_ok=True)
 
 data = {
@@ -11,7 +9,8 @@ data = {
 
 raw_yaml = yaml.dump(data, sort_keys=False)
 
-fname = f"output/EURUSD_{data['timestamp']}.yaml"
+safe_ts = data['timestamp'].replace(":", "-")       # ← sanitisează
+fname = f"output/EURUSD_{safe_ts}.yaml"
 with open(fname, "w") as f:
     f.write(raw_yaml)
 
