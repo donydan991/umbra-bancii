@@ -6,26 +6,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-pipeline:
+# ───────────────── ingest: FX, Calendar, News ──────────────────
+  ingest:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         module: ["ingest_fx.py", "ingest_calendar.py", "ingest_news.py"]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Clean old output
-        run: |
-          rm -rf output/*
+        run: rm -rf output/*
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -35,14 +33,44 @@ jobs:
           TWELVE_API_KEY: ${{ secrets.TWELVE_API_KEY }}
           NEWS_API_KEY:   ${{ secrets.NEWS_API_KEY }}
           FRED_API_KEY:   ${{ secrets.FRED_API_KEY }}
-        run: |
-          python src/${{ matrix.module }}
+        run: python src/${{ matrix.module }}
 
-      # ------------- FIX ---------------
-      # Numele artifactului devine unic:  reports-ingest_fx   /   reports-ingest_calendar
-      - name: Upload reports from ${{ matrix.module }}
+      - name: Upload reports ${{ matrix.module }}
         uses: actions/upload-artifact@v4
         with:
           name: reports-${{ matrix.module }}
           path: output/
-          retention-days: 3
+          retention-days: 7
+
+# ───────────────── fusion job (needs ingest) ──────────────────
+  fusion:
+    needs: ingest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ↓ descarcă toate artefactele generice într‑un subfolder
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+
+      - name: Run Pattern Fusion
+        run: python src/pattern_fusion.py
+
+      - name: Upload fusion
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-pattern_fusion
+          path: output/PATTERN_FUSION_*.yaml
+          retention-days: 7
