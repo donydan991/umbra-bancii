@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Umbra Băncii – Ingest FX prices (M60)
+Umbra Băncii – Ingest FX prices (H1)
 ------------------------------------
 1. Încearcă TwelveData   – 8 calls/min gratuite.
 2. La eroare (429, 400 etc.) sau lipsă 'values' → fallback Yahoo.
