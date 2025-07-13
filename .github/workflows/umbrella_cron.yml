@@ -2,7 +2,7 @@ name: Umbra Bancii – cron 60m
 
 on:
   schedule:
-    - cron: '*/60 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch: {}
 
 jobs:
