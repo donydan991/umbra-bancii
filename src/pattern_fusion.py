@@ -1,54 +1,43 @@
 #!/usr/bin/env python3
 """
-Umbra Băncii – Pattern Fusion v1.5 (toate 28 perechi, rulare orară)
-------------------------------------------------------------------
-Flux:
-1.  Citește lista perechilor din configs/pairs.yaml
-2.  Pentru fiecare pair:
-      • găsește cel mai nou ingest <PAIR>_*.yaml
-      • calculează momentum: close vs EMA‑10 (H1) din Yahoo
-3.  Calendar & News:
-      • calendar risk (High/Medium în <4h)
-      • news sentiment (average_score)
-4.  Integrează scor = momentum – event_risk + news_score
-5.  Scrie câte un  PATTERN_FUSION_<PAIR>_<timestamp>.yaml  în output/
+Umbra Băncii – Pattern Fusion v1.5  (toate 28 perechi, rulare orară)
+-------------------------------------------------------------------
+Caută fișiere YAML în output/** (recursiv), deci funcționează indiferent
+dacă download‑artifact le pune în subfoldere sau la rădăcină.
+
+Scor =  fx_momentum (EMA10‑H1)  -  event_risk  +  news_score
+Verdict: BUY / SELL / STANDBY
+Pentru fiecare pair salvează:  PATTERN_FUSION_<PAIR>_<timestamp>.yaml
 """
 
-import glob
-import os
-import datetime as dt
-import hashlib
-import yaml
-import pandas as pd
-import yfinance as yf
+import glob, os, datetime as dt, hashlib, yaml
 from pathlib import Path
 
-# ------------------------------------------------------------------
-# 0) Config – pairs list
-# ------------------------------------------------------------------
-try:
-    PAIRS = yaml.safe_load(Path("configs/pairs.yaml").read_text())["pairs"]
-except Exception as e:
-    raise RuntimeError(f"Cannot load pairs.yaml: {e}")
+import pandas as pd
+import yfinance as yf
+
+# ── 0. Config – pairs list ─────────────────────────────────────────────────────
+PAIRS = yaml.safe_load(Path("configs/pairs.yaml").read_text())["pairs"]
 
 UTCNOW = dt.datetime.utcnow().replace(microsecond=0)
 TIMESTAMP_ISO = UTCNOW.isoformat() + "Z"
 SAFE_TS = UTCNOW.strftime("%Y-%m-%dT%H-%M-%SZ")
 
-# ------------------------------------------------------------------
-# 1) Load latest Calendar & News
-# ------------------------------------------------------------------
-def latest(glob_pat: str):
-    files = glob.glob(glob_pat)
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# ── 1. Load latest Calendar & News (recursive) ─────────────────────────────────
+def latest(pattern: str):
+    files = glob.glob(pattern, recursive=True)
     return max(files, key=os.path.getmtime) if files else None
 
-CAL_FILE = latest("output/CALENDAR_*.yaml")
-NEWS_FILE = latest("output/NEWS_*.yaml")
+CAL_FILE  = latest("output/**/CALENDAR_*.yaml")
+NEWS_FILE = latest("output/**/NEWS_*.yaml")
 
-cal = yaml.safe_load(Path(CAL_FILE).read_text()) if CAL_FILE else {}
+cal  = yaml.safe_load(Path(CAL_FILE).read_text())  if CAL_FILE  else {}
 news = yaml.safe_load(Path(NEWS_FILE).read_text()) if NEWS_FILE else {}
 
-# Calendar event risk (<4h)
+# Calendar risk: High/Medium în <4 h
 event_risk = 0
 for ev in cal.get("events", []):
     ts = pd.to_datetime(ev["timestamp_utc"])
@@ -57,18 +46,13 @@ for ev in cal.get("events", []):
         event_risk = 1
         break
 
-# News score
+# News sentiment
 news_score = news.get("average_score", 0)
 
-# ------------------------------------------------------------------
-# 2) Loop over pairs
-# ------------------------------------------------------------------
-OUTPUT_DIR = Path("output")
-OUTPUT_DIR.mkdir(exist_ok=True)
-
+# ── 2. Parcurge perechile FX ───────────────────────────────────────────────────
 for pair in PAIRS:
-    # a) găsește ingest FX
-    fx_files = glob.glob(f"output/{pair}_*.yaml")
+    # a) găseşte ingest FX (recursive)
+    fx_files = glob.glob(f"output/**/{pair}_*.yaml", recursive=True)
     if not fx_files:
         print(f"[warn] No ingest file for {pair} – skip.")
         continue
@@ -77,7 +61,7 @@ for pair in PAIRS:
     rows = fx_data["rows"]
     last_close = float(rows[-1]["close"])
 
-    # b) momentum EMA‑10 (H1)
+    # b) Momentum EMA‑10 pe 1h
     symbol = f"{pair}=X"
     try:
         hist = yf.Ticker(symbol).history(period="15d", interval="1h").close
@@ -87,14 +71,9 @@ for pair in PAIRS:
         continue
     ema_cond = 1 if last_close > ema10 else -1
 
-    # c) Fusion score & verdict
+    # c) Scor integrat
     score = ema_cond - event_risk + news_score
-    if score >= 1:
-        verdict = "BUY"
-    elif score <= -1:
-        verdict = "SELL"
-    else:
-        verdict = "STANDBY"
+    verdict = "BUY" if score >= 1 else "SELL" if score <= -1 else "STANDBY"
 
     fusion = {
         "timestamp_utc": TIMESTAMP_ISO,
@@ -108,14 +87,14 @@ for pair in PAIRS:
         "verdict": verdict,
         "source_files": [
             os.path.basename(fx_file),
-            os.path.basename(CAL_FILE) if CAL_FILE else "",
+            os.path.basename(CAL_FILE)  if CAL_FILE  else "",
             os.path.basename(NEWS_FILE) if NEWS_FILE else "",
         ],
     }
 
-    raw_yaml = yaml.safe_dump(fusion, sort_keys=False, allow_unicode=True)
-    out_name = OUTPUT_DIR / f"PATTERN_FUSION_{pair}_{SAFE_TS}.yaml"
-    out_name.write_text(raw_yaml, encoding="utf-8")
+    raw = yaml.safe_dump(fusion, sort_keys=False, allow_unicode=True)
+    out_path = OUTPUT_DIR / f"PATTERN_FUSION_{pair}_{SAFE_TS}.yaml"
+    out_path.write_text(raw, encoding="utf-8")
 
-    print("Generated:", out_name)
-    print("SHA256:", hashlib.sha256(raw_yaml.encode()).hexdigest())
+    print("Generated:", out_path)
+    print("SHA256:", hashlib.sha256(raw.encode()).hexdigest())
