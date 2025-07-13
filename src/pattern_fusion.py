@@ -1,42 +1,37 @@
 #!/usr/bin/env python3
 """
-Umbra Băncii – Pattern Fusion v1.5  (toate 28 perechi, rulare orară, fără Yahoo)
---------------------------------------------------------------------------------
-Momentum se calculează ca:  Close(ultim)  vs  EMA‑10  pe seria M15 din ingest.
-EMA‑10 pe H1 ≈ EMA‑40 pe M15  (α identic).  Folosim ultimele 48 valori M15.
-Scor = momentum – event_risk + news_score
-Salvăm PATTERN_FUSION_<PAIR>_<timestamp>.yaml  pentru fiecare pair.
+Umbra Băncii – Pattern Fusion v1.5 (28 perechi, rulare orară, fără Yahoo)
+------------------------------------------------------------------------
+• Momentum: Close vs EMA‑40 pe M15 (calculat din seria din ingest).
+• Event risk: Calendar High/Medium în <4 h (acelaşi pt. toate perechile).
+• News sentiment: average_score (comun).
+• Scor = momentum − event_risk + news_score
+• Generează  PATTERN_FUSION_<PAIR>_<timestamp>.yaml  în folderul output/.
 """
 
 import glob, os, datetime as dt, hashlib, yaml
 from pathlib import Path
-
 import pandas as pd
 
-# ------------------------------------------------------------------
-# 0) Config – pairs list
-# ------------------------------------------------------------------
+# ── Config ─────────────────────────────────────────────────────────────
 PAIRS = yaml.safe_load(Path("configs/pairs.yaml").read_text())["pairs"]
 
-UTCNOW   = dt.datetime.utcnow().replace(microsecond=0)
-TS_ISO   = UTCNOW.isoformat() + "Z"
-SAFE_TS  = UTCNOW.strftime("%Y-%m-%dT%H-%M-%SZ")
-OUT_DIR  = Path("output"); OUT_DIR.mkdir(exist_ok=True)
+UTCNOW  = dt.datetime.utcnow().replace(microsecond=0)
+TS_ISO  = UTCNOW.isoformat() + "Z"
+SAFE_TS = UTCNOW.strftime("%Y-%m-%dT%H-%M-%SZ")
+OUT_DIR = Path("output"); OUT_DIR.mkdir(exist_ok=True)
 
-# ------------------------------------------------------------------
-# 1) Load latest Calendar & News (recursive)
-# ------------------------------------------------------------------
+# ── 1. Calendar & News (căutăm în tot workspace‑ul) ────────────────────
 def latest(pattern: str):
     files = glob.glob(pattern, recursive=True)
     return max(files, key=os.path.getmtime) if files else None
 
-CAL_FILE  = latest("output/**/CALENDAR_*.yaml")
-NEWS_FILE = latest("output/**/NEWS_*.yaml")
+CAL_FILE  = latest("**/CALENDAR_*.yaml")
+NEWS_FILE = latest("**/NEWS_*.yaml")
 
 cal  = yaml.safe_load(Path(CAL_FILE).read_text())  if CAL_FILE  else {}
 news = yaml.safe_load(Path(NEWS_FILE).read_text()) if NEWS_FILE else {}
 
-# Calendar risk (<4 h)
 event_risk = 0
 for ev in cal.get("events", []):
     ts = pd.to_datetime(ev["timestamp_utc"])
@@ -46,24 +41,19 @@ for ev in cal.get("events", []):
 
 news_score = news.get("average_score", 0)
 
-# ------------------------------------------------------------------
-# 2) Loop peste perechi
-# ------------------------------------------------------------------
+# ── 2. Loop perechi ────────────────────────────────────────────────────
 for pair in PAIRS:
-    # a) ingest FX YAML
-    fx_files = glob.glob(f"output/**/{pair}_*.yaml", recursive=True)
+    # a) cel mai nou ingest <PAIR>_*.yaml oriunde în repo
+    fx_files = glob.glob(f"**/{pair}_*.yaml", recursive=True)
+    fx_files = [f for f in fx_files if "/PATTERN_FUSION_" not in f]  # exclude output vechi
     if not fx_files:
-        print(f"[warn] Missing ingest for {pair}")
+        print(f"[warn] Ingest missing for {pair}")
         continue
+
     fx_path = max(fx_files, key=os.path.getmtime)
     fx = yaml.safe_load(Path(fx_path).read_text())
-    rows = fx["rows"]
-
-    # b) DataFrame Close
-    df = pd.DataFrame(rows)
-    df["close"] = pd.to_numeric(df["close"], errors="coerce")
-    closes = df["close"].tail(48)          # ultimile 12 h = 48×M15
-    if closes.isna().all():
+    closes = pd.Series([float(r["close"]) for r in fx["rows"]]).tail(48)
+    if closes.empty:
         print(f"[warn] No close data for {pair}")
         continue
 
@@ -71,7 +61,6 @@ for pair in PAIRS:
     last_close = closes.iloc[-1]
     momentum = 1 if last_close > ema40 else -1
 
-    # c) Scor & verdict
     score = momentum - event_risk + news_score
     verdict = "BUY" if score >= 1 else "SELL" if score <= -1 else "STANDBY"
 
@@ -93,8 +82,8 @@ for pair in PAIRS:
     }
 
     raw = yaml.safe_dump(fusion, sort_keys=False, allow_unicode=True)
-    out = OUT_DIR / f"PATTERN_FUSION_{pair}_{SAFE_TS}.yaml"
-    out.write_text(raw, encoding="utf-8")
+    out_path = OUT_DIR / f"PATTERN_FUSION_{pair}_{SAFE_TS}.yaml"
+    out_path.write_text(raw, encoding="utf-8")
 
-    print("Generated:", out)
+    print("Generated:", out_path)
     print("SHA256:", hashlib.sha256(raw.encode()).hexdigest())
