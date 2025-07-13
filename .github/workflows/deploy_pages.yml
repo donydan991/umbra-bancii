@@ -2,7 +2,7 @@ name: Deploy dashboard
 
 on:
   workflow_run:
-    workflows: ["Umbra Bancii – cron 15m"]
+    workflows: ["Umbra Bancii – cron 60m"]
     types: [completed]
   workflow_dispatch:
 
