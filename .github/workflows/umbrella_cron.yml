@@ -8,38 +8,73 @@ on:
   workflow_dispatch:
 
 #─────────────────────────────────────────────────────────────
-# 1) JOB MATRIX: INGEST   (fx, calendar, news)
+# 0) JOB helper – citește lista de 28 perechi
 #─────────────────────────────────────────────────────────────
 jobs:
-  ingest:
+  get-pairs:
     runs-on: ubuntu-latest
-    env:                            # ← secrete disponibile scripturilor
-      FRED_API_KEY:    ${{ secrets.FRED_API_KEY }}
-      TWELVE_API_KEY:  ${{ secrets.TWELVE_API_KEY }}
-      NEWS_API_KEY:    ${{ secrets.NEWS_API_KEY }}
+    outputs:
+      json: ${{ steps.dump.outputs.json }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: dump
+        run: |
+          pairs=$(python - <<'PY'
+import yaml, json, pathlib
+pairs = yaml.safe_load(pathlib.Path("configs/pairs.yaml").read_text())["pairs"]
+print(json.dumps(pairs))
+PY
+)
+          echo "json=$pairs" >> $GITHUB_OUTPUT
 
+#─────────────────────────────────────────────────────────────
+# 1) JOB MATRIX – INGEST FX   (28 perechi)
+#─────────────────────────────────────────────────────────────
+  ingest_fx:
+    needs: get-pairs
+    runs-on: ubuntu-latest
+    env:
+      TWELVE_API_KEY: ${{ secrets.TWELVE_API_KEY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: ${{ fromJson(needs.get-pairs.outputs.json) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install deps
+        run: pip install yfinance pyyaml requests
+      - name: Ingest ${{ matrix.pair }}
+        run: python src/ingest_fx.py --pair ${{ matrix.pair }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pair }}_yaml
+          path: |
+            *.yaml
+          retention-days: 7
+
+#─────────────────────────────────────────────────────────────
+# 2) JOB MATRIX – INGEST Calendar + News
+#─────────────────────────────────────────────────────────────
+  ingest_misc:
+    runs-on: ubuntu-latest
+    env:
+      FRED_API_KEY:   ${{ secrets.FRED_API_KEY }}
+      NEWS_API_KEY:   ${{ secrets.NEWS_API_KEY }}
     strategy:
       matrix:
-        module: [ingest_fx, ingest_calendar, ingest_news]
-
+        module: [ingest_calendar, ingest_news]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
       - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+        run: pip install -r requirements.txt
       - name: Run ${{ matrix.module }}
         run: python src/${{ matrix.module }}.py
-
-      - name: Upload reports ${{ matrix.module }}
+      - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
           name: reports-${{ matrix.module }}
@@ -47,46 +82,36 @@ jobs:
           retention-days: 7
 
 #─────────────────────────────────────────────────────────────
-# 2) JOB FUSION  (rulează după ingest)
+# 3) JOB FUSION  (după ambele ingest‑uri)
 #─────────────────────────────────────────────────────────────
   fusion:
-    needs: ingest
+    needs: [ingest_fx, ingest_misc]
     runs-on: ubuntu-latest
     env:
       FRED_API_KEY:    ${{ secrets.FRED_API_KEY }}
       TWELVE_API_KEY:  ${{ secrets.TWELVE_API_KEY }}
       NEWS_API_KEY:    ${{ secrets.NEWS_API_KEY }}
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
+        with: { python-version: '3.11' }
       - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+        run: pip install -r requirements.txt
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: output
-
       - name: Run Pattern Fusion
         id: build_fusion
         run: python src/pattern_fusion.py
-
       - name: Upload fusion
         uses: actions/upload-artifact@v4
         with:
           name: reports-pattern_fusion
           path: output/PATTERN_FUSION_*.yaml
           retention-days: 7
-
       #──────────────────────────────
-      # ALERTĂ TELEGRAM (BUY/SELL/STANDBY)
+      # ALERTĂ TELEGRAM
       #──────────────────────────────
       - name: Send Telegram alert
         if: steps.build_fusion.outcome == 'success'
@@ -99,17 +124,13 @@ jobs:
           score=$(grep '^fusion_score:' "$yaml_file" | awk '{print $2}')
           ts=$(grep '^timestamp:' "$yaml_file" | awk '{print $2}')
           url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          # emoji în funcție de verdict
           case "$verdict" in
             BUY) icon="🟢";;
             SELL) icon="🔴";;
             STANDBY) icon="🟠";;
             *) icon="🔵";;
           esac
-
           text="$icon Umbra Băncii\nVerdict: *$verdict*  (score: $score)\n[$ts UTC]($url)"
-
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
                -d chat_id="${TELEGRAM_CHAT_ID}" \
                -d parse_mode="Markdown" \
