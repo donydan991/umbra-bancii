@@ -16,11 +16,11 @@ jobs:
         shell: bash
         run: |
           pairs_json=$(python - <<'PY'
-import yaml, json, pathlib, sys
-pairs = yaml.safe_load(pathlib.Path("configs/pairs.yaml").read_text())["pairs"]
-print(json.dumps(pairs))
-PY
-)
+          import yaml, json, pathlib
+          pairs = yaml.safe_load(pathlib.Path("configs/pairs.yaml").read_text())["pairs"]
+          print(json.dumps(pairs))
+          PY
+          )
           echo "json=$pairs_json" >> "$GITHUB_OUTPUT"
 
   ingest_fx:
@@ -103,10 +103,10 @@ PY
           ts=$(grep '^timestamp:' "$yaml_file" | awk '{print $2}')
           url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           case "$verdict" in
-            BUY) icon="🟢";;
-            SELL) icon="🔴";;
-            STANDBY) icon="🟠";;
-            *) icon="🔵";;
+            BUY) icon="🟢" ;;
+            SELL) icon="🔴" ;;
+            STANDBY) icon="🟠" ;;
+            *) icon="🔵" ;;
           esac
           text="$icon Umbra Băncii\nVerdict: *$verdict*  (score: $score)\n[$ts UTC]($url)"
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
