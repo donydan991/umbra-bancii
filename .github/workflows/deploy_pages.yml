@@ -30,7 +30,7 @@ jobs:
       # construim pagina HTML
       - name: Build index.html
         run: |
-          cd site
+          cd site/output
           latest=$(ls -1 PATTERN_FUSION_*.yaml | tail -1)
           {
             echo '<!doctype html><html><head><meta charset="utf-8"><title>Umbra Bancii – Dashboard</title>'
