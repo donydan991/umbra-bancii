@@ -1,0 +1,47 @@
+name: Ingest FX 28×M15
+
+on:
+  schedule:
+    - cron:  '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  get-pairs:
+    runs-on: ubuntu-latest
+    outputs:
+      json: ${{ steps.dump.outputs.json }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: dump
+        run: |
+          python - <<'PY'
+          import yaml, json, pathlib, os
+          pairs = yaml.safe_load(pathlib.Path("configs/pairs.yaml").read_text())["pairs"]
+          print(f"::set-output name=json::{json.dumps(pairs)}")
+          PY
+
+  ingest-fx:
+    needs: get-pairs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pair: ${{ fromJson(needs.get-pairs.outputs.json) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Install deps
+        run: pip install yfinance pyyaml requests
+      - name: Ingest ${{ matrix.pair }}
+        env:
+          TWELVE_API_KEY: ${{ secrets.TWELVE_API_KEY }}
+        run: |
+          python src/ingest_fx.py --pair ${{ matrix.pair }}
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pair }}_yaml
+          path: |
+            *.yaml
