@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Umbra Băncii – Ingest FX prices (H1)
-------------------------------------
+Umbra Băncii – Ingest FX prices (M15, rulare orară)
+---------------------------------------------------
 1. Încearcă TwelveData   – 8 calls/min gratuite.
 2. La eroare (429, 400 etc.) sau lipsă 'values' → fallback Yahoo.
 3. Salvează artefact YAML:  <PAIR>_YYYYMMDD_HHMM.yaml
    Conține:
        - timestamp_utc   (ISO 8601)
        - pair            (ex. EURUSD)
-       - rows            (listă OHLCV)
+       - rows            (listă OHLCV, interval 15 m)
        - sha256          (hash al datelor pentru Blockchain Logic)
 """
 
@@ -115,7 +115,9 @@ def main(pair: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ingest FX prices M15")
+    parser = argparse.ArgumentParser(
+        description="Ingest FX prices – interval 15 min (rulare orară)"
+    )
     parser.add_argument("--pair", required=True, help="ex. EURUSD, GBPJPY …")
     args = parser.parse_args()
 
