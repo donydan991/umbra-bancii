@@ -1,8 +1,8 @@
-name: Umbra Bancii – cron 15m
+name: Umbra Bancii – cron 60m
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/60 * * * *'
   workflow_dispatch: {}
 
 jobs:
